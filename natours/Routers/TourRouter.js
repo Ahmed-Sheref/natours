@@ -9,7 +9,7 @@ const router = express.Router();
 
 // router.param('id' , TourRouter.Check_id)
 
-router.get('/:id' , TourRouter.getSpecficTour)
+router.route('/:id').get(TourRouter.getSpecficTour).patch(TourRouter.UpdateTour).delete(TourRouter.DeleteTour)
 
 
 router
