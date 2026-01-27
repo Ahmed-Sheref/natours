@@ -9,6 +9,7 @@ const DB = process.env.DATABASE;
 mongoose.connect(DB)
 .then((con) => 
 {
+    console.log()
     console.log(con.connection)
     console.log('Connection Done');
 })
@@ -16,6 +17,5 @@ mongoose.connect(DB)
 {
     console.error('Connection Error:', err);
 });
-
 
 app.listen(3000 , () => {console.log('server is running...')});
