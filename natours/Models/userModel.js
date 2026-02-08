@@ -32,7 +32,7 @@ let userModel = new mongoose.Schema
         role:
         {
             type: String,
-            enum: ['user' , 'admid'],
+            enum: ['user' , 'admin'],
             default: 'user'
         },
         active:

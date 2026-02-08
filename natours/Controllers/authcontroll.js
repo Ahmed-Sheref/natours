@@ -8,6 +8,7 @@ const sendEmail = require('../utils/email');
 // refresh token
 // logout
 // SSO
+
 const sign = (id) =>
 {
     return JWT.sign({id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
@@ -206,8 +207,8 @@ exports.forget = async (req, res) =>
     } 
     catch (err) 
     {
-        user.passwordResetToken = undefined;
-        user.passwordResetExpires = undefined;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordTokenExpire = undefined;
         await user.save({ validateBeforeSave: false });
         console.log(err)
         res.status(400).json(
@@ -224,7 +225,7 @@ exports.resetPassword =  async (req , res , next) =>
     // 1) Get user based on the token
     let hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
     console.log(hashedToken);
-    let user = await User.findOne({passwordResetToken: hashedToken});
+    let user = await User.findOne({resetPasswordToken: hashedToken});
     if (!user)
     {
         return res.status(403).json(
@@ -236,7 +237,7 @@ exports.resetPassword =  async (req , res , next) =>
 
 
     // 2) If token has not expired, and there is user, set the new password
-    if (user.passwordResetExpires < Date.now())
+    if (user.resetPasswordTokenExpire < Date.now())
     {
         return res.status(403).json(
         {
@@ -246,7 +247,7 @@ exports.resetPassword =  async (req , res , next) =>
     }
 
     // 3) Update changedPasswordAt property for the user
-    user.changedPasswordAt = Date.now();
+    user.changePasswordAt = Date.now();
     user.password = req.body.password;
     user.passwordResetExpires = undefined;
     user.passwordResetToken = undefined;
