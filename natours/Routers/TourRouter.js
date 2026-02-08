@@ -26,7 +26,7 @@ router
     .route('/:id')
     .get(TourRouter.getSpecficTour)
     .patch(TourRouter.UpdateTour)
-    .delete(TourRouter.DeleteTour);
+    .delete(authcontroll.protect, authcontroll.restrictto('admin'), TourRouter.DeleteTour);
 
 
 

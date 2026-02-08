@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcryptjs')
+const crypto = require('crypto');
+const { type } = require('os');
 let userModel = new mongoose.Schema
 (
     {
@@ -27,6 +29,18 @@ let userModel = new mongoose.Schema
         {
             type: String,
         },
+        role:
+        {
+            type: String,
+            enum: ['user' , 'admid'],
+            default: 'user'
+        },
+        active:
+        {
+            type: Boolean,
+            select: false,
+            default: true
+        },
         password:
         {
             type: String,
@@ -47,6 +61,14 @@ let userModel = new mongoose.Schema
             }
         },
         changePasswordAt: {type: Date},
+        resetPasswordToken:
+        {
+            type: String
+        },
+        resetPasswordTokenExpire:
+        {
+            type: Date
+        }
     }
 )
 
@@ -56,23 +78,40 @@ userModel.pre('save' , async function(next)
     {
         this.password = await bcrypt.hash(this.password , 12);
         this.confirmPassword = undefined;
-        this.changePasswordAt = Date.now();
+        this.changePasswordAt = Date.now() - 1000;
     }
     next();
 })
 
+userModel.pre(/^find/ , function (next)
+{
+    this.find({active: {$ne: false}});
+    next();
+})
+
+//! we pass the two parameter because password -> (select: false)
 userModel.methods.correct = async function (oldPass , userPass)
 {
     return await bcrypt.compare(oldPass , userPass);
 }
 
-userSchema.methods.changedPasswordAfter = function (jwtIatSeconds) 
+userModel.methods.changedPasswordAfter = function (jwtIatSeconds) 
 {
     if (!this.changePasswordAt) return false;
 
     const changedAtSeconds = Math.floor(this.changePasswordAt.getTime() / 1000);
     return changedAtSeconds > jwtIatSeconds;
 };
+
+userModel.methods.createRandomToken = function()
+{
+    let resetToken = crypto.randomBytes(32).toString('hex');
+
+    this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    this.resetPasswordTokenExpire = Date.now() + 10 * 1000 * 60;
+
+    return resetToken;
+}
 
 
 const User = mongoose.model('User' , userModel);
