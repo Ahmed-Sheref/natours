@@ -1,6 +1,6 @@
 const express = require('express');
-const TourRouter = require('./Routers/TourRouter')
-const UserRouter = require('./Routers/UserRouter')
+const TourRouter = require('./Routers/TourRouter');
+const UserRouter = require('./Routers/UserRouter');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
