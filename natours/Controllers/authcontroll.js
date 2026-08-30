@@ -25,6 +25,7 @@ exports.signup = async (req, res, next) =>
                 email: req.body.email,
                 password: req.body.password,
                 confirmPassword: req.body.confirmPassword,
+                role: req.body.role
             }
         );
         // const token = JWT.sign({id: newUser._id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
@@ -249,8 +250,8 @@ exports.resetPassword =  async (req , res , next) =>
     // 3) Update changedPasswordAt property for the user
     user.changePasswordAt = Date.now();
     user.password = req.body.password;
-    user.passwordResetExpires = undefined;
-    user.passwordResetToken = undefined;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordTokenExpire = undefined;
     await user.save();
     // 4) Log the user in, send JWT
 
