@@ -1,0 +1,2410 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: /locales/, /assets/, /pnpm-lock.yaml, /.svg, **/.png
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+Controllers/
+  authcontroll.js
+  errorController.js
+  TourController.js
+  UserController.js
+dev-data/
+  data/
+    natours.js
+    tours-simple.json
+  Simple_import_data.js
+Models/
+  tourModel.js
+  userModel.js
+Routers/
+  TourRouter.js
+  UserRouter.js
+utils/
+  appError.js
+  catchAsync.js
+  email.js
+views/
+  emails/
+    Logo.png
+    passwordReset.pug
+config.env
+doc.text
+index.js
+Server.js
+swagger.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="Controllers/authcontroll.js">
+const { configDotenv } = require('dotenv');
+const User = require('../Models/userModel');
+const JWT = require('jsonwebtoken');
+const { promisify } = require('util');
+const crypto = require('crypto');
+const sendEmail = require('../utils/email');
+
+// refresh token
+// logout
+// SSO
+
+const sign = (id) =>
+{
+    return JWT.sign({id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
+}
+
+exports.signup = async (req, res, next) =>
+{
+    try
+    {
+        let newUser = await User.create
+        (
+            {
+                name: req.body.name,
+                email: req.body.email,
+                password: req.body.password,
+                confirmPassword: req.body.confirmPassword,
+                role: req.body.role
+            }
+        );
+        // const token = JWT.sign({id: newUser._id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
+        const token = sign(newUser._id);
+        res.status(201).json(
+            {
+                status: 'success',
+                token,
+                data:
+                {
+                    user: newUser
+                }
+            }
+        )
+    }
+    catch (err)
+    {
+        res.status(400).json(
+            {
+                status: 'faild',
+                err
+            }
+        )
+    }
+}
+
+exports.login = async (req , res , next) => 
+{
+    const {email , password} = req.body;
+    if (!email || !password)
+    {
+        return res.status(401).json(
+            {
+                status: 'fail',
+                token: ''
+            })
+    }
+    let user = await User.findOne({email}).select('+password');
+    if (!user)
+    {
+        return res.status(401).json(
+        {
+            status: 'fail',
+            token: ''
+        })
+    }
+    let correct = await user.correct(password , user.password);
+    if (!correct)
+    {
+        return res.status(401).json(
+        {
+            status: 'fail',
+            token: ''
+        })
+    }
+    res.status(200).json(
+        {
+            status: 'success',
+            token: sign(user._id)
+        }
+    )
+}
+
+exports.protect = async (req , res , next) =>
+{
+    //1) Getting token and checking if it's there
+    let token;
+    if (!req.headers.authorization || req.headers.authorization.split(' ')[0] !== 'Bearer')
+    {
+        return res.status(401).json(
+        {
+            status: 'fail',
+            token: ''
+        })
+    }
+    else
+    {
+        token = req.headers.authorization.split(' ')[1];
+    }
+    console.log(token);
+    // next();
+
+    //2) Verification of token
+    let correct;
+    try
+    {
+        correct = await JWT.verify(token , process.env.JWT_SECRETE);
+    }
+    catch(err)
+    {
+        return res.status(401).json(
+        {
+            status: 'Not verify',
+            token: '',
+        })
+    }
+
+    //3) Check if user still exists
+    let currentUser = await User.findById(correct.id);
+    if (!currentUser) 
+    {
+    return res.status(401).json(
+        {
+            status: 'fail',
+            message: 'User no longer exists',
+        });
+    }
+
+    //4) Check if user changed password after the token was issued
+    if (currentUser.changedPasswordAfter(correct.iat))
+    {
+        return res.status(401).json({ message: "Password changed. Please login again." });
+    }
+    req.user = currentUser;
+    next();
+}
+
+exports.restrictto = function(...role)
+{
+    const roles = role;
+    return function(req ,res, next)
+    {
+        if (!roles.includes(req.user.role))
+        {
+            return res.status(403).json(
+            {
+                status: 'fail',
+                message: 'You do not have permission to perform this action',
+            });
+        }
+        next();
+    }
+}
+
+exports.forget = async (req, res) =>
+{
+    const email = req.body.email;
+
+    // 1) get user by email
+    let user = await User.findOne({email: email});
+    if (!user)
+    {
+        return res.status(403).json(
+        {
+            status: 'fail',
+            message: 'You do not have permission to perform this action',
+        });
+    }
+
+    // 2) Generate the randomToken
+    let randomToken = user.createRandomToken();
+    await user.save({validateBeforeSave: false});
+
+    console.log(randomToken);
+
+    // 3) sent the token to user's email
+
+
+    const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${randomToken}`;
+    const message = `Forgot your password? Submit a PATCH request with your new password and
+    passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this
+    email!`;
+
+    try 
+    {
+        await sendEmail.sendEmail(
+        {
+            email: user.email, 
+            subject: 'Your password reset token (valid for 10 min)',
+            template: 'passwordReset', 
+            user: user,              
+            url: resetURL            
+        });
+
+        res.status(200).json(
+        {
+            status: 'success',
+            message: 'Token sent to email!'
+        });
+    } 
+    catch (err) 
+    {
+        user.resetPasswordToken = undefined;
+        user.resetPasswordTokenExpire = undefined;
+        await user.save({ validateBeforeSave: false });
+        console.log(err)
+        res.status(400).json(
+        {
+            status: 'fail',
+            message: err.message
+        });
+    }
+}
+
+
+exports.resetPassword =  async (req , res , next) => 
+{
+    // 1) Get user based on the token
+    let hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+    console.log(hashedToken);
+    let user = await User.findOne({resetPasswordToken: hashedToken});
+    if (!user)
+    {
+        return res.status(403).json(
+        {
+            status: 'fail',
+            message: 'Not found user',
+        });
+    }
+
+
+    // 2) If token has not expired, and there is user, set the new password
+    if (user.resetPasswordTokenExpire < Date.now())
+    {
+        return res.status(403).json(
+        {
+            status: 'fail',
+            message: 'Expires',
+        });
+    }
+
+    // 3) Update changedPasswordAt property for the user
+    user.changePasswordAt = Date.now();
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordTokenExpire = undefined;
+    await user.save();
+    // 4) Log the user in, send JWT
+
+    res.status(200).json(
+    {
+        status: 'success',
+        token: sign(user._id)
+    })
+    next();
+}
+</file>
+
+<file path="Controllers/errorController.js">
+const AppError = require('../utils/appError');
+
+const handleCastErrorDB = err => 
+{
+    const message = `Invalid ${err.path}: ${err.value}.`;
+    return new AppError(message, 400);
+};
+
+const handleDuplicateFieldsDB = err => 
+{
+    const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
+    console.log(value);
+    const message = `Duplicate field value: ${value}. Please use another value!`;
+    return new AppError(message, 400);
+};
+
+const handleValidationErrorDB = err => 
+{
+    const errors = Object.values(err.errors).map(el => el.message);
+    const message = `Invalid input data. ${errors.join('. ')}`;
+    return new AppError(message, 400);
+};
+
+const sendErrorDev = (err, res) => 
+{
+    res.status(err.statusCode).json(
+    {
+        status: err.status,
+        error: err,
+        message: err.message,
+        stack: err.stack
+    });
+};
+
+const sendErrorProd = (err, res) => 
+{
+    // Operational, trusted error: send message to client
+    if (err.operror) {
+        res.status(err.statusCode).json(
+        {
+            status: err.status,
+            message: err.message
+        });
+
+        // Programming or other unknown error: don't leak error details
+    } 
+    else 
+    {
+        // 1) Log error
+        console.error('ERROR 💥', err);
+
+        // 2) Send generic message
+        res.status(500).json(
+        {
+            status: 'error',
+            message: 'Something went very wrong!'
+        });
+    }
+};
+
+module.exports = (err, req, res, next) => 
+{
+    // console.log(err.stack);
+
+    err.statusCode = err.statusCode || 500;
+    err.status = err.status || 'error';
+
+    if (process.env.NODE_ENV === 'development') 
+    {
+        sendErrorDev(err, res);
+    } 
+    else if (process.env.NODE_ENV === 'production') 
+    {
+        let error = { ...err };
+
+        if (error.name === 'CastError') error = handleCastErrorDB(error);
+        if (error.code === 11000) error = handleDuplicateFieldsDB(error);
+        if (error.name === 'ValidationError') error = handleValidationErrorDB(error);
+
+        sendErrorProd(error, res);
+    }
+};
+</file>
+
+<file path="Controllers/TourController.js">
+// const fs = require('fs')
+const Tour = require('./../Models/tourModel.js');
+const catchAsync = require('../utils/catchAsync.js');
+const appError = require('../utils/appError.js');
+class API_Features 
+{
+    constructor(Query , queryStr)
+    {
+        this.Query = Query;
+        this.queryStr = queryStr;
+    }
+
+    filter()
+    {
+        let queryObj = {...this.queryStr};
+        
+        let Special_Operation = ['sort' , 'limit' , 'page' , 'fields']
+        
+        Special_Operation.forEach(op => {delete queryObj[op]});
+        console.log(queryObj);
+
+        // Handle query to match specific syntax for Mongooes
+        queryObj = JSON.stringify(queryObj);
+        let queryStr = queryObj.replace(/"(\w+)\[(gte|gt|lte|lt)\]":"?([^"]+)"?/g,'"$1":{"$$$2":"$3"}');
+        queryStr = JSON.parse(queryStr);
+        this.Query = this.Query.find(queryStr);
+        return this;
+    }
+
+    sort()
+    {
+        let QuerySort = this.queryStr.sort;
+        if (QuerySort)
+        {
+            console.log('before =', QuerySort);
+            QuerySort = QuerySort.split(',').join(' ');
+            console.log('after  =', QuerySort);
+            this.Query = this.Query.sort(QuerySort);
+        }
+        return this;
+    }
+
+    limit()
+    {
+        let Querylimit = this.queryStr.limit ? this.queryStr.limit * 1 : 10;
+        let Querypage  = this.queryStr.page  ? this.queryStr.page  * 1 : 1;
+
+        let Queryskip = (Querypage - 1) * Querylimit;
+
+        this.Query = this.Query.skip(Queryskip).limit(Querylimit);
+        return this;
+    }
+}
+
+exports.getTours = catchAsync (async (req , res, next) => 
+{
+        let Features = new API_Features(Tour.find() , req.query)
+        .filter()
+        .sort()
+        .limit();
+
+        // Run Query
+        const tours = await Features.Query;
+        res.status(200).json(
+        {
+            len : tours.length,
+            status : 'success',
+            data : {tours}
+        })
+})
+
+exports.getSpecficTour = catchAsync (async (req , res, next) => 
+{
+    
+        const s_tours = await Tour.findById(req.params.id);
+        res.status(200).json(
+        {
+            status : 'success',
+            data : {s_tours}
+        })
+})
+
+
+
+exports.CreateTour = catchAsync(async (req , res, next) =>
+{
+    // try
+    // {
+        const newTour = await Tour.create(req.body);
+        res.status(200).json(
+            {
+                status: 'success',
+                data : {tour : newTour}
+            }
+        )
+    // }
+    // catch (err)
+    // {
+    //     res.status(400).json(
+    //         {
+    //             status : 'fail',
+    //             message : err
+    //         }
+    //     )
+    // }
+})
+
+exports.UpdateTour = catchAsync(async (req , res, next) =>
+{
+   
+        const newTour = await Tour.findByIdAndUpdate(req.params.id , req.body , {new : true , runValidators : true});
+        res.status(200).json(
+            {
+                status: 'success',
+                data : {tour : newTour}
+            }
+        )
+})
+
+exports.DeleteTour = catchAsync(async (req , res, next) =>
+{
+    
+        const tour = await Tour.findByIdAndDelete(req.params.id);
+        if (!tour)
+        {
+            return next(new appError('this tour not found', 404));
+        }
+        res.status(200).json(
+        {
+            status: 'success',
+            data: tour
+        });
+    
+    
+        // res.status(400).json(
+        // {
+        //     status: 'fail',
+        //     message: `Invalid ID: ${err.message}`
+        // });
+    
+})
+
+exports.get_Tours_stats = catchAsync(async (req , res, next) =>
+{
+    
+        let Tours = await Tour.aggregate(
+            [
+                {
+                    '$group' : 
+                    {
+                        _id : '$difficulty',
+                        numtours : {'$sum' : 1},
+                        avgPrice: {'$avg': '$price'},
+                    }
+                }
+                ,
+                {
+                    '$sort' : 
+                    {
+                        'avgPrice' : -1
+                    }
+                }
+            ]
+        )
+
+        res.status(200).json(
+            {
+                status : 'success',
+                data: Tours
+            }
+        )
+    
+})
+
+exports.get_plan_monthly = catchAsync(async (req , res, next) =>
+{
+   
+        let year = req.params.year;
+        let Tours = await Tour.aggregate(
+            [
+                {
+                    '$unwind' : '$startDates'
+                },
+                {
+                    '$match' : 
+                    {
+                        startDates : 
+                        {
+                            '$gte' : new Date(`${year}-01-01`),
+                            '$lte' : new Date(`${year}-12-31`)
+                        }
+                    }
+                }
+                ,
+                {
+                    '$group' : 
+                    {
+                        _id : {'$month' : '$startDates'},
+                        numOfTours : {'$sum' : 1},
+                        Tours : {'$push' : '$name'}
+                    }
+                }
+                ,
+                {
+                    '$project' :
+                    {
+                        _id: 0,
+                        month: "$_id",
+                        numOfTours: 1,
+                        Tours: 1
+                    }
+                }
+            ]
+        )
+
+        res.status(200).json(
+            {
+                len : Tours.length,
+                status : 'success',
+                data: Tours
+            }
+        )
+})
+
+, next
+</file>
+
+<file path="Controllers/UserController.js">
+// const { sign } = require('jsonwebtoken');
+const User = require('../Models/userModel');
+const JWT = require('jsonwebtoken');
+
+const filterObject = (obj , ...allowFields) =>
+{
+    let newObject = {};
+    Object.keys(obj).forEach(el =>
+    {
+        if (allowFields.includes(el)) newObject[el] = obj[el];
+    })
+    return newObject;
+}
+
+const sign = (id) =>
+{
+    return JWT.sign({id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
+}
+
+exports.getAllUsers = async (req, res) => 
+{
+    let users = await User.find();
+    res.status(200).json({
+    status: 'success',
+    users,
+    });
+};
+
+exports.createUser = (req, res) => 
+{
+    let users = User.find();
+    res.status(200).json({
+    status: 'success',
+    users,
+    });
+};
+
+exports.getUser = (req, res) => 
+{
+    let users = User.find();
+    res.status(200).json({
+    status: 'success',
+    users,
+    });
+};
+
+exports.updatePassword = async (req, res) => 
+{
+
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    if (!currentPassword || !newPassword || !confirmPassword) 
+    {
+        return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (newPassword !== confirmPassword) {
+    return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const user = await User.findById(req.user.id).select("+password");
+
+    const ok = await user.correct(currentPassword , user.password);
+    if (!ok) 
+    {
+        return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    user.password = newPassword;
+    user.confirmPassword = confirmPassword;
+
+    await user.save();
+    let token = sign(req.user.id);
+
+
+    return res.status(200).json({ message: "Password updated successfully" , token});
+}
+
+exports.updateUser = async (req , res , next) =>
+{
+    let user = await User.findById(req.user.id);
+    let newReq = filterObject(req.body , 'name' , 'email');
+    let newUser = await User.findByIdAndUpdate(req.user.id , newReq , {runValidators: true , new: true})
+
+    return res.status(200).json({ message: "User updated successfully" , newUser});
+}
+
+exports.deleteMe = async (req , res , next) =>
+{
+    let user = await User.findByIdAndUpdate(req.user.id, { active: false });
+    return res.status(200).json({ message: "User deleted successfully"});
+}
+
+exports.deleteUser = (req, res) => 
+    {
+    res.status(500).json({
+    status: 'error',
+    message: 'This route is not yet defined!',
+    });
+};
+</file>
+
+<file path="dev-data/data/natours.js">
+import path from 'path'
+
+console.log(path.dirname(import.meta.filename))
+
+console.log(import.meta.filename)
+</file>
+
+<file path="dev-data/data/tours-simple.json">
+[
+    {
+        "id": 0,
+        "name": "The Forest Hiker",
+        "duration": 5,
+        "maxGroupSize": 25,
+        "difficulty": "easy",
+        "ratingsAverage": 4.7,
+        "ratingsQuantity": 37,
+        "price": 397,
+        "summary": "Breathtaking hike through the Canadian Banff National Park",
+        "description": "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\nLorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+        "imageCover": "tour-1-cover.jpg",
+        "images": [
+            "tour-1-1.jpg",
+            "tour-1-2.jpg",
+            "tour-1-3.jpg"
+        ],
+        "startDates": [
+            "2021-04-25,10:00",
+            "2021-07-20,10:00",
+            "2021-10-05,10:00"
+        ]
+    },
+    {
+        "id": 1,
+        "name": "The Sea Explorer",
+        "duration": 7,
+        "maxGroupSize": 15,
+        "difficulty": "medium",
+        "ratingsAverage": 4.8,
+        "ratingsQuantity": 23,
+        "price": 497,
+        "summary": "Exploring the jaw-dropping US east coast by foot and by boat",
+        "description": "Consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\nIrure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+        "imageCover": "tour-2-cover.jpg",
+        "images": [
+            "tour-2-1.jpg",
+            "tour-2-2.jpg",
+            "tour-2-3.jpg"
+        ],
+        "startDates": [
+            "2021-06-19,10:00",
+            "2021-07-20,10:00",
+            "2021-08-18,10:00"
+        ]
+    },
+    {
+        "id": 2,
+        "name": "The Snow Adventurer",
+        "duration": 4,
+        "maxGroupSize": 10,
+        "difficulty": "difficult",
+        "ratingsAverage": 4.5,
+        "ratingsQuantity": 13,
+        "price": 997,
+        "summary": "Exciting adventure in the snow with snowboarding and skiing",
+        "description": "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua, ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum!\nDolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur, exercitation ullamco laboris nisi ut aliquip. Lorem ipsum dolor sit amet, consectetur adipisicing elit!",
+        "imageCover": "tour-3-cover.jpg",
+        "images": [
+            "tour-3-1.jpg",
+            "tour-3-2.jpg",
+            "tour-3-3.jpg"
+        ],
+        "startDates": [
+            "2022-01-05,10:00",
+            "2022-02-12,10:00",
+            "2023-01-06,10:00"
+        ]
+    },
+    {
+        "id": 3,
+        "name": "The City Wanderer",
+        "duration": 9,
+        "maxGroupSize": 20,
+        "difficulty": "easy",
+        "ratingsAverage": 4.6,
+        "ratingsQuantity": 54,
+        "price": 1197,
+        "summary": "Living the life of Wanderlust in the US' most beatiful cities",
+        "description": "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat lorem ipsum dolor sit amet.\nConsectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur, nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat!",
+        "imageCover": "tour-4-cover.jpg",
+        "images": [
+            "tour-4-1.jpg",
+            "tour-4-2.jpg",
+            "tour-4-3.jpg"
+        ],
+        "startDates": [
+            "2021-03-11,10:00",
+            "2021-05-02,10:00",
+            "2021-06-09,10:00"
+        ]
+    },
+    {
+        "id": 4,
+        "name": "The Park Camper",
+        "duration": 10,
+        "maxGroupSize": 15,
+        "difficulty": "medium",
+        "ratingsAverage": 4.9,
+        "ratingsQuantity": 19,
+        "price": 1497,
+        "summary": "Breathing in Nature in America's most spectacular National Parks",
+        "description": "Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum!",
+        "imageCover": "tour-5-cover.jpg",
+        "images": [
+            "tour-5-1.jpg",
+            "tour-5-2.jpg",
+            "tour-5-3.jpg"
+        ],
+        "startDates": [
+            "2021-08-05,10:00",
+            "2022-03-20,10:00",
+            "2022-08-12,10:00"
+        ]
+    },
+    {
+        "id": 5,
+        "name": "The Sports Lover",
+        "duration": 14,
+        "maxGroupSize": 8,
+        "difficulty": "difficult",
+        "ratingsAverage": 4.7,
+        "ratingsQuantity": 28,
+        "price": 2997,
+        "summary": "Surfing, skating, parajumping, rock climbing and more, all in one tour",
+        "description": "Nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\nVoluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur!",
+        "imageCover": "tour-6-cover.jpg",
+        "images": [
+            "tour-6-1.jpg",
+            "tour-6-2.jpg",
+            "tour-6-3.jpg"
+        ],
+        "startDates": [
+            "2021-07-19,10:00",
+            "2021-09-06,10:00",
+            "2022-03-18,10:00"
+        ]
+    },
+    {
+        "id": 6,
+        "name": "The Wine Taster",
+        "duration": 5,
+        "maxGroupSize": 8,
+        "difficulty": "easy",
+        "ratingsAverage": 4.5,
+        "ratingsQuantity": 35,
+        "price": 1997,
+        "summary": "Exquisite wines, scenic views, exclusive barrel tastings,  and much more",
+        "description": "Consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\nIrure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+        "imageCover": "tour-7-cover.jpg",
+        "images": [
+            "tour-7-1.jpg",
+            "tour-7-2.jpg",
+            "tour-7-3.jpg"
+        ],
+        "startDates": [
+            "2021-02-12,10:00",
+            "2021-04-14,10:00",
+            "2021-09-01,10:00"
+        ]
+    },
+    {
+        "id": 7,
+        "name": "The Star Gazer",
+        "duration": 9,
+        "maxGroupSize": 8,
+        "difficulty": "medium",
+        "ratingsAverage": 4.7,
+        "ratingsQuantity": 28,
+        "price": 2997,
+        "summary": "The most remote and stunningly beautiful places for seeing the night sky",
+        "description": "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\nLorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+        "imageCover": "tour-8-cover.jpg",
+        "images": [
+            "tour-8-1.jpg",
+            "tour-8-2.jpg",
+            "tour-8-3.jpg"
+        ],
+        "startDates": [
+            "2021-03-23,10:00",
+            "2021-10-25,10:00",
+            "2022-01-30,10:00"
+        ]
+    },
+    {
+        "id": 8,
+        "name": "The Northern Lights",
+        "duration": 3,
+        "maxGroupSize": 12,
+        "difficulty": "easy",
+        "ratingsAverage": 4.9,
+        "ratingsQuantity": 33,
+        "price": 1497,
+        "summary": "Enjoy the Northern Lights in one of the best places in the world",
+        "description": "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua, ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum!\nDolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur, exercitation ullamco laboris nisi ut aliquip. Lorem ipsum dolor sit amet, consectetur adipisicing elit!",
+        "imageCover": "tour-9-cover.jpg",
+        "images": [
+            "tour-9-1.jpg",
+            "tour-9-2.jpg",
+            "tour-9-3.jpg"
+        ],
+        "startDates": [
+            "2021-12-16,10:00",
+            "2022-01-16,10:00",
+            "2022-12-12,10:00"
+        ]
+    },
+    {
+        "id": 9,
+        "name": "Test Tour",
+        "duration": 10,
+        "difficulty": "easy"
+    },
+    {
+        "id": 10,
+        "name": "Test Tour",
+        "duration": 10,
+        "difficulty": "easy"
+    },
+    {
+        "id": 11,
+        "name": "Test Tour 2",
+        "duration": 5,
+        "difficulty": "easy"
+    },
+    {
+        "id": 12,
+        "name": "Test Tour",
+        "duration": 10,
+        "difficulty": "easy"
+    },
+    {
+        "id": 13,
+        "name": "Test Tour",
+        "duration": 10,
+        "difficulty": "easy"
+    },
+    {
+        "id": 14,
+        "name": "Test Tour",
+        "duration": 10,
+        "difficulty": "easy"
+    },
+    {
+        "id": 15,
+        "name": "Test Tour",
+        "duration": 55555555,
+        "difficulty": "easy"
+    },
+    {
+        "id": 16,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy"
+    },
+    {
+        "id": 17,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy"
+    },
+    {
+        "id": 18,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy"
+    },
+    {
+        "id": 19,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy",
+        "price": 100
+    },
+    {
+        "id": 20,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy"
+    },
+    {
+        "id": 21,
+        "name": "Test Tour",
+        "duration": 100,
+        "difficulty": "easy",
+        "price": 100
+    }
+]
+</file>
+
+<file path="dev-data/Simple_import_data.js">
+// const app = require('./index');
+const dotenv = require('dotenv');
+const mongoose = require('mongoose');
+const path = require('path')
+const fs = require('fs'); 
+dotenv.config({path: 'D:\\Programming\\Back_end\\Jonas\\natours\\config.env'})
+
+// console.log(__dirname)
+const tourModelPath = path.join(__dirname, '..', 'Models', 'tourModel.js');
+const toursFilePath = path.join(__dirname, 'data', 'tours-simple.json');
+
+
+const Tour = require(tourModelPath)
+
+const TourData = JSON.parse(fs.readFileSync(toursFilePath, 'utf-8'));
+
+const DB = process.env.DATABASE;
+
+mongoose.connect(DB)
+.then((con) => 
+{
+    console.log(con.connection)
+    console.log('Connection Done');
+})
+.catch((err) => 
+{
+    console.error('Connection Error:', err);
+});
+
+async function import_data ()
+{
+    try
+    {
+        await Tour.create(TourData);
+        console.log('import Data')
+    }
+    catch (err)
+    {
+        console.log('Failed' + err);
+    }
+    process.exit();
+}
+
+async function Delete_Data ()
+{
+    try
+    {
+        await Tour.deleteMany();
+        console.log('Deleted Data')
+    }
+    catch (err)
+    {
+        console.log('Failed' + err);
+    }
+    process.exit();
+}
+
+if (process.argv[2] === '--import') import_data();
+else if (process.argv[2] === '--delete') Delete_Data();
+</file>
+
+<file path="Models/tourModel.js">
+const mongoose = require('mongoose');
+// const slugify = require('slugify');
+// const validator = require('validator');
+
+const tourSchema = new mongoose.Schema(
+    {
+        name:
+        {
+            type: String,
+            required: [true, 'A tour must have a name'],
+            unique: true,
+            trim: true,
+            maxlength: [40, 'A tour name must have less or equal then 40 characters'],
+            minlength: [10, 'A tour name must have more or equal then 10 characters']
+            // validate: [validator.isAlpha, 'Tour name must only contain characters']
+        },
+        slug:
+        {
+            type: String
+        },
+        duration:
+        {
+            type: Number,
+            required: [true, 'A tour must have a duration']
+        },
+        maxGroupSize:
+        {
+            type: Number,
+            required: [true, 'A tour must have a group size']
+        },
+        difficulty:
+        {
+            type: String,
+            required: [true, 'A tour must have a difficulty'],
+            enum:
+            {
+                values: ['easy', 'medium', 'difficult'],
+                message: 'Difficulty is either: easy, medium, difficult'
+            }
+        },
+        ratingsAverage:
+        {
+            type: Number,
+            default: 4.5,
+            min: [1, 'Rating must be above 1.0'],
+            max: [5, 'Rating must be below 5.0']
+        },
+        ratingsQuantity:
+        {
+            type: Number,
+            default: 0
+        },
+        price:
+        {
+            type: Number,
+            required: [true, 'A tour must have a price']
+        },
+        priceDiscount:
+        {
+            type: Number,
+            validate:
+            {
+                validator: function (val)
+                {
+                    return val < this.price;
+                },
+                message: 'Discount price ({VALUE}) should be below regular price'
+            }
+        },
+        summary:
+        {
+            type: String,
+            trim: true,
+            required: [true, 'A tour must have a description']
+        },
+        description:
+        {
+            type: String,
+            trim: true
+        },
+        imageCover:
+        {
+            type: String,
+            required: [true, 'A tour must have a cover image']
+        },
+        images:
+        [
+            String
+        ],
+        createdAt:
+        {
+            type: Date,
+            default: Date.now(),
+            select: false
+        },
+        startDates:
+        [
+            Date
+        ],
+        secretTour:
+        {
+            type: Boolean,
+            default: false
+        }
+    },
+    {
+        toJSON:
+        {
+            virtuals: true
+        },
+        toObject:
+        {
+            virtuals: true
+        }
+    }
+);
+
+tourSchema.virtual('durationWeeks').get(function ()
+{
+    return this.duration / 7;
+});
+
+// DOCUMENT MIDDLEWARE: runs before .save() and .create()
+tourSchema.pre('save', function (next)
+{
+    // this.slug = slugify(this.name, { lower: true });
+    next();
+});
+
+// QUERY MIDDLEWARE
+tourSchema.pre(/^find/, function (next)
+{
+    this.find({ secretTour: { $ne: true } });
+    this.start = Date.now();
+    next();
+});
+
+tourSchema.post(/^find/, function (docs, next)
+{
+    console.log(`Query took ${Date.now() - this.start} milliseconds!`);
+    next();
+});
+
+// AGGREGATION MIDDLEWARE
+tourSchema.pre('aggregate', function (next)
+{
+    this.pipeline().unshift(
+        {
+            $match:
+            {
+                secretTour: { $ne: true }
+            }
+        }
+    );
+
+    console.log(this.pipeline());
+    next();
+});
+
+const Tour = mongoose.model('Tour', tourSchema);
+
+module.exports = Tour;
+</file>
+
+<file path="Models/userModel.js">
+const mongoose = require('mongoose');
+const validator = require('validator');
+const bcrypt = require('bcryptjs')
+const crypto = require('crypto');
+const { type } = require('os');
+let userModel = new mongoose.Schema
+(
+    {
+        name:
+        {
+            type: String,
+            required: true,
+            maxlength: [40, 'name should be less than or equal 40'],
+            minlength: [10, 'name should be more than or equal 10'],
+        },
+        email:
+        {
+            type: String,
+            required: true,
+            unique: true,
+            lowercase: true,
+            validate:
+            {
+                validator: validator.isEmail,
+                message: 'Please Provide a valid email'
+            }
+        },
+        photo:
+        {
+            type: String,
+        },
+        role:
+        {
+            type: String,
+            enum: ['user' , 'admin'],
+            default: 'user'
+        },
+        active:
+        {
+            type: Boolean,
+            select: false,
+            default: true
+        },
+        password:
+        {
+            type: String,
+            required: true,
+            min: 8
+        },
+        confirmPassword:
+        {
+            type: String,
+            required: true,
+            validate:
+            {
+                validator: function(value)
+                {
+                    return this.password === value;
+                },
+                message: 'Should be the same password'
+            }
+        },
+        changePasswordAt: {type: Date},
+        resetPasswordToken:
+        {
+            type: String
+        },
+        resetPasswordTokenExpire:
+        {
+            type: Date
+        }
+    }
+)
+
+userModel.pre('save' , async function(next)
+{
+    if (this.isModified('password'))
+    {
+        this.password = await bcrypt.hash(this.password , 12);
+        this.confirmPassword = undefined;
+        this.changePasswordAt = Date.now() - 1000;
+    }
+    next();
+})
+
+userModel.pre(/^find/ , function (next)
+{
+    this.find({active: {$ne: false}});
+    next();
+})
+
+//! we pass the two parameter because password -> (select: false)
+userModel.methods.correct = async function (oldPass , userPass)
+{
+    return await bcrypt.compare(oldPass , userPass);
+}
+
+userModel.methods.changedPasswordAfter = function (jwtIatSeconds) 
+{
+    if (!this.changePasswordAt) return false;
+
+    const changedAtSeconds = Math.floor(this.changePasswordAt.getTime() / 1000);
+    return changedAtSeconds > jwtIatSeconds;
+};
+
+userModel.methods.createRandomToken = function()
+{
+    let resetToken = crypto.randomBytes(32).toString('hex');
+
+    this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    this.resetPasswordTokenExpire = Date.now() + 10 * 1000 * 60;
+
+    return resetToken;
+}
+
+
+const User = mongoose.model('User' , userModel);
+
+module.exports = User;
+</file>
+
+<file path="Routers/TourRouter.js">
+const fs = require('fs');
+const express = require('express');
+const TourRouter = require('./../Controllers/TourController');
+const authcontroll = require('./../Controllers/authcontroll');
+// const { route } = require('..');
+
+
+
+// const tours = JSON.parse(fs.readFileSync(''));
+const router = express.Router();
+
+
+
+router
+    .route('/get-tours-stats')
+    .get(TourRouter.get_Tours_stats);
+
+router
+    .route('/monthly_plan/:year')
+    .get(TourRouter.get_plan_monthly);
+
+router
+    .route('/:id')
+    .get(TourRouter.getSpecficTour)
+    .patch(TourRouter.UpdateTour)
+    .delete(authcontroll.protect, authcontroll.restrictto('admin'), TourRouter.DeleteTour);
+
+router
+    .route('/')
+    .get(authcontroll.protect ,TourRouter.getTours)
+    .post(TourRouter.CreateTour);
+
+module.exports = router
+</file>
+
+<file path="Routers/UserRouter.js">
+const fs = require('fs');
+const express = require('express');
+const UserRouter = require('./../Controllers/UserController')
+const authcontroll = require('./../Controllers/authcontroll')
+
+
+
+
+const router = express.Router();
+
+router.post('/signup', authcontroll.signup)
+router.post('/login', authcontroll.login)
+
+router.post('/forgetpassword', authcontroll.forget)
+router.patch('/resetpassword/:token', authcontroll.resetPassword)
+
+
+router.patch('/updateMyPassword' , authcontroll.protect, UserRouter.updatePassword)
+router.patch('/updateMe' , authcontroll.protect, UserRouter.updateUser)
+router.delete('/deleteMe' , authcontroll.protect, UserRouter.deleteMe)
+
+
+router
+    .route('/')
+    .get(UserRouter.getAllUsers)
+    .post(UserRouter.createUser);
+
+router
+    .route('/:id')
+    .get(UserRouter.getUser)
+    // .patch(UserRouter.updateUser)
+    .delete(UserRouter.deleteUser);
+
+module.exports = router
+</file>
+
+<file path="utils/appError.js">
+class appError extends Error
+{
+    constructor(message, statusCode)
+    {
+        super(message);
+        this.statusCode = statusCode;
+        this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+        this.operror = true;
+
+        Error.captureStackTrace(this, this.constructor)
+    }
+}
+
+module.exports = appError;
+</file>
+
+<file path="utils/catchAsync.js">
+module.exports = (fn) => 
+{
+    return (req, res, next) => 
+    {
+        fn(req, res, next).catch(next);
+    }
+}
+</file>
+
+<file path="utils/email.js">
+const nodemailer = require('nodemailer');
+const pug = require('pug');
+// const { options } = require('..');
+
+exports.sendEmail = async (options) =>
+{
+    const transporter = nodemailer.createTransport(
+        {
+            service: 'gmail',
+            auth:
+            {
+                user: process.env.EMAIL_USERNAME,
+                pass: process.env.EMAIL_PASSWORD
+            }
+        }
+    )
+
+
+    const html = pug.renderFile(`${__dirname}/../views/emails/${options.template}.pug`, 
+    {
+        firstName: options.user.name.split(' ')[0],
+        url: options.url,
+        subject: options.subject
+    });
+    const mailOptions = 
+    {
+        from: `Natours Admin <${process.env.EMAIL_FROM}>`,
+        to: options.email,
+        subject: options.subject,
+        html: html,
+        text: html
+    }
+
+    await transporter.sendMail(mailOptions);
+}
+</file>
+
+<file path="views/emails/passwordReset.pug">
+doctype html
+html
+  head
+    meta(name='viewport', content='width=device-width')
+    meta(http-equiv='Content-Type', content='text/html; charset=UTF-8')
+    title= subject
+    style.
+      /* --- MODERN RESET & BASE STYLES --- */
+      body {
+        background-color: #f6f9fc;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        font-size: 16px;
+        line-height: 1.6;
+        margin: 0;
+        padding: 0;
+        -ms-text-size-adjust: 100%;
+        -webkit-text-size-adjust: 100%;
+      }
+      
+      /* --- CONTAINER --- */
+      .table-container {
+        width: 100%;
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        margin-top: 40px;
+        margin-bottom: 40px;
+      }
+
+      /* --- HEADER (LOGO) --- */
+      .header {
+        background-color: #ffffff; /* ممكن تغيره للون البراند بتاعك */
+        padding: 30px 0;
+        text-align: center;
+        border-bottom: 1px solid #f0f0f0;
+      }
+      .logo {
+        width: 80px; /* حجم اللوجو */
+        height: auto;
+      }
+
+      /* --- CONTENT --- */
+      .content {
+        padding: 40px;
+        text-align: left;
+        color: #333333;
+      }
+      h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 20px;
+        color: #1a1a1a;
+      }
+      p {
+        margin-bottom: 20px;
+        color: #555555;
+      }
+
+      /* --- BUTTON (CTA) --- */
+      .btn-container {
+        text-align: center;
+        margin: 30px 0;
+      }
+      .btn {
+        background-color: #55c57a; /* لون Natours الأخضر */
+        color: #ffffff !important;
+        display: inline-block;
+        padding: 14px 30px;
+        border-radius: 50px; /* زرار دائري مودرن */
+        text-decoration: none;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(85, 197, 122, 0.2);
+        transition: all 0.3s ease;
+      }
+      .btn:hover {
+        background-color: #40965d;
+        box-shadow: 0 6px 8px rgba(85, 197, 122, 0.3);
+      }
+
+      /* --- LINK FALLBACK --- */
+      .fallback-link {
+        font-size: 12px;
+        color: #999999;
+        word-break: break-all;
+        margin-top: 30px;
+        border-top: 1px solid #f0f0f0;
+        padding-top: 20px;
+      }
+
+      /* --- FOOTER --- */
+      .footer {
+        background-color: #f9f9f9;
+        padding: 20px;
+        text-align: center;
+        font-size: 12px;
+        color: #999999;
+      }
+
+      /* --- MOBILE RESPONSIVE --- */
+      @media only screen and (max-width: 620px) {
+        .table-container { width: 100% !important; border-radius: 0; margin: 0; }
+        .content { padding: 20px; }
+      }
+
+  body
+    table.body(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%')
+      tr
+        td(align='center')
+          //- START MAIN CARD
+          div.table-container
+            
+            //- 1. Header with Logo
+            div.header
+              //- ⚠️ استبدل الرابط ده برابط اللوجو بتاعك الحقيقي
+              img.logo(src='https://i.ibb.co/5WZSqjB7/Logo.png', alt='Natours Logo')
+            
+            //- 2. Content Body
+            div.content
+              h1 Reset Your Password
+              p Hi #{firstName},
+              p We received a request to reset the password for your account. If you didn't make this request, just ignore this email.
+              p Otherwise, you can reset your password using the button below:
+              
+              //- 3. The Modern Button
+              div.btn-container
+                a.btn(href=`${url}`, target='_blank') Reset Password
+              
+              p(style="margin-bottom: 0;") This link is valid for only 10 minutes.
+              p Cheers,
+              p The Natours Team
+
+              //- 4. Fallback Link (عشان لو الزرار مشتغلش)
+              div.fallback-link
+                p If the button doesn't work, copy and paste this link into your browser:
+                a(href=`${url}`, style="color: #55c57a;") #{url}
+
+            //- 5. Footer
+            div.footer
+              p © 2026 Natours Inc. All rights reserved.
+              p Cairo, Egypt
+</file>
+
+<file path="doc.text">
+
+</file>
+
+<file path="index.js">
+const express = require('express');
+const TourRouter = require('./Routers/TourRouter');
+const UserRouter = require('./Routers/UserRouter');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
+const appError = require('./utils/appError')
+const errorHandler = require('./Controllers/errorController');
+
+
+const app = express();
+// app.use((req , res , next) => {console.log(req.query.sort = 5); next()});
+
+app.use(express.json());
+
+// Swagger
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+app.use('/api/v1/tours' , TourRouter);
+app.use('/api/v1/users' , UserRouter);
+
+app.use((req,res,next) => 
+{
+    // let err = new Error('Path not found')
+    // err.statusCode = 404;
+    // err.status = 'fail';
+
+    next(new appError('path Not Found', 404));
+})
+
+app.use(errorHandler);
+
+module.exports = app;
+</file>
+
+<file path="Server.js">
+const app = require('./index');
+const dotenv = require('dotenv');
+const mongoose = require('mongoose');
+
+dotenv.config({path: 'D:\\Programming\\Back_end\\Jonas\\natours\\config.env'})
+
+const DB = process.env.DATABASE;
+
+mongoose.connect(DB)
+.then((con) => 
+{
+    console.log()
+    console.log(con.connection)
+    console.log('Connection Done');
+})
+
+const server = app.listen(3000 , () => {console.log('server is running...')});
+
+process.on('unhandledRejection', (err) => 
+{
+    console.log('UNHANDLED REJECTION! 💥 Shutting down...');
+    console.log(err.name, err.message);
+    server.close(() => 
+    {
+        process.exit(1);
+    });
+})
+</file>
+
+<file path="swagger.js">
+const path = require('path');
+const swaggerJSDoc = require('swagger-jsdoc');
+
+const options = {
+  definition: {
+    openapi: '3.0.3',
+    info: {
+      title: 'Natours API',
+      version: '1.0.0',
+      description: 'API documentation for Tours & Users/Auth',
+    },
+
+    servers: [
+      { url: 'http://localhost:3000', description: 'Local server' },
+    ],
+
+    tags: [
+      { name: 'Auth', description: 'Authentication & password flows' },
+      { name: 'Users', description: 'User management endpoints' },
+      { name: 'Tours', description: 'Tours endpoints' },
+    ],
+
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+
+      // ✅ IMPORTANT: schemas MUST be inside components.schemas
+      schemas: {
+        Tour: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string', minLength: 10, maxLength: 40 },
+            duration: { type: 'number' },
+            maxGroupSize: { type: 'number' },
+            difficulty: { type: 'string', enum: ['easy', 'medium', 'difficult'] },
+            ratingsAverage: { type: 'number', minimum: 1, maximum: 5 },
+            ratingsQuantity: { type: 'number' },
+            price: { type: 'number' },
+            priceDiscount: { type: 'number' },
+            summary: { type: 'string' },
+            description: { type: 'string' },
+            imageCover: { type: 'string' },
+            images: { type: 'array', items: { type: 'string' } },
+            startDates: { type: 'array', items: { type: 'string', format: 'date-time' } },
+            secretTour: { type: 'boolean' },
+          },
+        },
+
+        User: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string', minLength: 10, maxLength: 40 },
+            email: { type: 'string', format: 'email' },
+            photo: { type: 'string' },
+            role: { type: 'string', enum: ['user', 'admin'] },
+            active: { type: 'boolean' },
+          },
+        },
+
+        SignupRequest: {
+          type: 'object',
+          required: ['name', 'email', 'password', 'confirmPassword'],
+          properties: {
+            name: { type: 'string', example: 'Mohamed Ahmed Ali' },
+            email: { type: 'string', example: 'mohamed@test.com' },
+            password: { type: 'string', example: '12345678' },
+            confirmPassword: { type: 'string', example: '12345678' },
+          },
+        },
+
+        LoginRequest: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: { type: 'string', example: 'mohamed@test.com' },
+            password: { type: 'string', example: '12345678' },
+          },
+        },
+
+        AuthResponse: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', example: 'success' },
+            token: { type: 'string' },
+          },
+        },
+
+        UpdatePasswordRequest: {
+          type: 'object',
+          required: ['currentPassword', 'newPassword', 'confirmPassword'],
+          properties: {
+            currentPassword: { type: 'string', example: 'OldPass123' },
+            newPassword: { type: 'string', example: 'NewPass123!' },
+            confirmPassword: { type: 'string', example: 'NewPass123!' },
+          },
+        },
+
+        ErrorResponse: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', example: 'fail' },
+            message: { type: 'string', example: 'Something went wrong' },
+          },
+        },
+      },
+    },
+
+    // All API paths defined here instead of JSDoc comments in router files
+    paths: {
+      // Auth endpoints
+      '/api/v1/users/signup': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Create user account',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SignupRequest' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Signed up successfully',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AuthResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/login': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Login with email and password',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LoginRequest' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Logged in successfully',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AuthResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/updateMyPassword': {
+        patch: {
+          tags: ['Auth'],
+          summary: 'Update my password (logged in)',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdatePasswordRequest' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Password updated + new token returned',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AuthResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/forgetpassword': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Send password reset token to user\'s email',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email'],
+                  properties: {
+                    email: { type: 'string', format: 'email', example: 'mohamed@test.com' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Token sent to email',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'success' },
+                      message: { type: 'string', example: 'Token sent to email!' }
+                    }
+                  }
+                }
+              }
+            },
+            403: {
+              description: 'User not found / not allowed',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/resetpassword/{token}': {
+        patch: {
+          tags: ['Auth'],
+          summary: 'Reset password using reset token',
+          parameters: [{
+            in: 'path',
+            name: 'token',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Reset token that was sent to the user\'s email'
+          }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['password'],
+                  properties: {
+                    password: { type: 'string', example: 'NewStrongPass123!' },
+                    confirmPassword: { type: 'string', example: 'NewStrongPass123!' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Password reset succeeded, returns a new JWT',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AuthResponse' }
+                }
+              }
+            },
+            403: {
+              description: 'Invalid token or expired token',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // User endpoints
+      '/api/v1/users': {
+        get: {
+          tags: ['Users'],
+          summary: 'Get all users',
+          responses: {
+            200: {
+              description: 'List of users',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'success' },
+                      users: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/User' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        post: {
+          tags: ['Users'],
+          summary: 'Create a user (not implemented in your code yet)',
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/User' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Placeholder response (your controller currently returns a users query, not creating)',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'success' },
+                      users: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/User' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/{id}': {
+        get: {
+          tags: ['Users'],
+          summary: 'Get a user by id (not implemented in your code yet)',
+          parameters: [{
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }],
+          responses: {
+            200: {
+              description: 'Placeholder response (your controller currently returns a users query, not a single user)',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'success' },
+                      users: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/User' }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            400: {
+              description: 'Invalid id',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        },
+        delete: {
+          tags: ['Users'],
+          summary: 'Delete a user by id (not implemented in your code yet)',
+          parameters: [{
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }],
+          responses: {
+            500: {
+              description: 'Route not defined (your controller currently returns 500)',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/updateMe': {
+        patch: {
+          tags: ['Users'],
+          summary: 'Update my profile (name/email)',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', example: 'Mohamed Ahmed Ali' },
+                    email: { type: 'string', format: 'email', example: 'mohamed@test.com' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'User updated successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      message: { type: 'string', example: 'User updated successfully' },
+                      newUser: { $ref: '#/components/schemas/User' }
+                    }
+                  }
+                }
+              }
+            },
+            401: {
+              description: 'Unauthorized / invalid token',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      '/api/v1/users/deleteMe': {
+        delete: {
+          tags: ['Users'],
+          summary: 'Deactivate my account (soft delete)',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'User deleted successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      message: { type: 'string', example: 'User deleted successfully' }
+                    }
+                  }
+                }
+              }
+            },
+            401: {
+              description: 'Unauthorized / invalid token',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // Tour endpoints
+      '/api/v1/tours/get-tours-stats': {
+        get: {
+          tags: ['Tours'],
+          summary: 'Get tours statistics (grouped by difficulty)',
+          responses: {
+            200: { description: 'Stats' }
+          }
+        }
+      },
+
+      '/api/v1/tours/monthly_plan/{year}': {
+        get: {
+          tags: ['Tours'],
+          summary: 'Get monthly plan for a given year',
+          parameters: [{
+            in: 'path',
+            name: 'year',
+            required: true,
+            schema: { type: 'integer', example: 2026 }
+          }],
+          responses: {
+            200: { description: 'Monthly plan' }
+          }
+        }
+      },
+
+      '/api/v1/tours/{id}': {
+        get: {
+          tags: ['Tours'],
+          summary: 'Get specific tour by id',
+          parameters: [{
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }],
+          responses: {
+            200: {
+              description: 'Tour',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Tour' }
+                }
+              }
+            }
+          }
+        },
+        patch: {
+          tags: ['Tours'],
+          summary: 'Update tour by id',
+          parameters: [{
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Tour' }
+              }
+            }
+          },
+          responses: {
+            200: { description: 'Updated tour' }
+          }
+        },
+        delete: {
+          tags: ['Tours'],
+          summary: 'Delete tour by id (admin only)',
+          security: [{ bearerAuth: [] }],
+          parameters: [{
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+            description: 'MongoDB ObjectId'
+          }],
+          responses: {
+            200: { description: 'Deleted tour' }
+          }
+        }
+      },
+
+      '/api/v1/tours': {
+        get: {
+          tags: ['Tours'],
+          summary: 'Get all tours (supports filtering, sorting, pagination)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'query',
+              name: 'sort',
+              schema: { type: 'string' },
+              description: 'Example: price,-ratingsAverage'
+            },
+            {
+              in: 'query',
+              name: 'limit',
+              schema: { type: 'integer', example: 10 }
+            },
+            {
+              in: 'query',
+              name: 'page',
+              schema: { type: 'integer', example: 1 }
+            }
+          ],
+          responses: {
+            200: {
+              description: 'List of tours',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      len: { type: 'integer' },
+                      status: { type: 'string' },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          tours: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/Tour' }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        post: {
+          tags: ['Tours'],
+          summary: 'Create a new tour',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Tour' }
+              }
+            }
+          },
+          responses: {
+            200: { description: 'Created tour' }
+          }
+        }
+      }
+    }
+  },
+
+  // Required for swagger-jsdoc even when paths are defined directly
+  apis: [], // Empty since we define all paths in the paths object
+};
+
+module.exports = swaggerJSDoc(options);
+</file>
+
+</files>
