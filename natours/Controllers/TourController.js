@@ -221,5 +221,3 @@ exports.get_plan_monthly = catchAsync(async (req , res, next) =>
             }
         )
 })
-
-, next
