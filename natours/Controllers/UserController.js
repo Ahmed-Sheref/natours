@@ -1,6 +1,7 @@
-// const { sign } = require('jsonwebtoken');
 const User = require('../Models/userModel');
 const JWT = require('jsonwebtoken');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
 
 const filterObject = (obj , ...allowFields) =>
 {
@@ -17,45 +18,48 @@ const sign = (id) =>
     return JWT.sign({id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
 }
 
-exports.getAllUsers = async (req, res) => 
+exports.getAllUsers = catchAsync(async (req, res, next) => 
 {
     let users = await User.find();
-    res.status(200).json({
-    status: 'success',
-    users,
+    res.status(200).json(
+    {
+        status: 'success',
+        users,
     });
-};
+});
 
 exports.createUser = (req, res) => 
 {
     let users = User.find();
-    res.status(200).json({
-    status: 'success',
-    users,
+    res.status(200).json(
+    {
+        status: 'success',
+        users,
     });
 };
 
 exports.getUser = (req, res) => 
 {
     let users = User.find();
-    res.status(200).json({
-    status: 'success',
-    users,
+    res.status(200).json(
+    {
+        status: 'success',
+        users,
     });
 };
 
-exports.updatePassword = async (req, res) => 
+exports.updatePassword = catchAsync(async (req, res, next) => 
 {
-
     const { currentPassword, newPassword, confirmPassword } = req.body;
 
     if (!currentPassword || !newPassword || !confirmPassword) 
     {
-        return res.status(400).json({ message: "Missing required fields" });
+        return next(new AppError("Missing required fields", 400));
     }
 
-    if (newPassword !== confirmPassword) {
-    return res.status(400).json({ message: "Passwords do not match" });
+    if (newPassword !== confirmPassword) 
+    {
+        return next(new AppError("Passwords do not match", 400));
     }
 
     const user = await User.findById(req.user.id).select("+password");
@@ -63,7 +67,7 @@ exports.updatePassword = async (req, res) =>
     const ok = await user.correct(currentPassword , user.password);
     if (!ok) 
     {
-        return res.status(401).json({ message: "Current password is incorrect" });
+        return next(new AppError("Current password is incorrect", 401));
     }
 
     user.password = newPassword;
@@ -72,29 +76,29 @@ exports.updatePassword = async (req, res) =>
     await user.save();
     let token = sign(req.user.id);
 
+    return res.status(200).json({ status: 'success', message: "Password updated successfully" , token});
+});
 
-    return res.status(200).json({ message: "Password updated successfully" , token});
-}
-
-exports.updateUser = async (req , res , next) =>
+exports.updateUser = catchAsync(async (req , res , next) =>
 {
     let user = await User.findById(req.user.id);
     let newReq = filterObject(req.body , 'name' , 'email');
     let newUser = await User.findByIdAndUpdate(req.user.id , newReq , {runValidators: true , new: true})
 
-    return res.status(200).json({ message: "User updated successfully" , newUser});
-}
+    return res.status(200).json({ status: 'success', message: "User updated successfully" , newUser});
+});
 
-exports.deleteMe = async (req , res , next) =>
+exports.deleteMe = catchAsync(async (req , res , next) =>
 {
     let user = await User.findByIdAndUpdate(req.user.id, { active: false });
-    return res.status(200).json({ message: "User deleted successfully"});
-}
+    return res.status(200).json({ status: 'success', message: "User deleted successfully"});
+});
 
 exports.deleteUser = (req, res) => 
+{
+    res.status(500).json(
     {
-    res.status(500).json({
-    status: 'error',
-    message: 'This route is not yet defined!',
+        status: 'error',
+        message: 'This route is not yet defined!',
     });
 };
