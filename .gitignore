@@ -2,3 +2,4 @@ node_modules/
 .cph/
 *.cpp
 config.env
+*.xml
