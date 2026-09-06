@@ -2,6 +2,9 @@
 const Tour = require('./../Models/tourModel.js');
 const catchAsync = require('../utils/catchAsync.js');
 const appError = require('../utils/appError.js');
+const factory = require('./handlerFactory');
+
+/* 
 class API_Features 
 {
     constructor(Query , queryStr)
@@ -51,7 +54,9 @@ class API_Features
         return this;
     }
 }
+*/
 
+/*
 exports.getTours = catchAsync (async (req , res, next) => 
 {
         let Features = new API_Features(Tour.find() , req.query)
@@ -72,7 +77,7 @@ exports.getTours = catchAsync (async (req , res, next) =>
 exports.getSpecficTour = catchAsync (async (req , res, next) => 
 {
     
-        const s_tours = await Tour.findById(req.params.id);
+        const s_tours = await Tour.findById(req.params.id).populate('reviews');
         res.status(200).json(
         {
             status : 'success',
@@ -80,12 +85,8 @@ exports.getSpecficTour = catchAsync (async (req , res, next) =>
         })
 })
 
-
-
 exports.CreateTour = catchAsync(async (req , res, next) =>
 {
-    // try
-    // {
         const newTour = await Tour.create(req.body);
         res.status(200).json(
             {
@@ -93,21 +94,10 @@ exports.CreateTour = catchAsync(async (req , res, next) =>
                 data : {tour : newTour}
             }
         )
-    // }
-    // catch (err)
-    // {
-    //     res.status(400).json(
-    //         {
-    //             status : 'fail',
-    //             message : err
-    //         }
-    //     )
-    // }
 })
 
 exports.UpdateTour = catchAsync(async (req , res, next) =>
 {
-   
         const newTour = await Tour.findByIdAndUpdate(req.params.id , req.body , {new : true , runValidators : true});
         res.status(200).json(
             {
@@ -119,7 +109,6 @@ exports.UpdateTour = catchAsync(async (req , res, next) =>
 
 exports.DeleteTour = catchAsync(async (req , res, next) =>
 {
-    
         const tour = await Tour.findByIdAndDelete(req.params.id);
         if (!tour)
         {
@@ -130,15 +119,14 @@ exports.DeleteTour = catchAsync(async (req , res, next) =>
             status: 'success',
             data: tour
         });
-    
-    
-        // res.status(400).json(
-        // {
-        //     status: 'fail',
-        //     message: `Invalid ID: ${err.message}`
-        // });
-    
 })
+*/
+
+exports.getTours = factory.getAll(Tour);
+exports.getSpecficTour = factory.getOne(Tour, { path: 'reviews' });
+exports.CreateTour = factory.createOne(Tour);
+exports.UpdateTour = factory.updateOne(Tour);
+exports.DeleteTour = factory.deleteOne(Tour);
 
 exports.get_Tours_stats = catchAsync(async (req , res, next) =>
 {
