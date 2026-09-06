@@ -13,7 +13,7 @@ const AppError = require('../utils/appError');
 
 const sign = (id) =>
 {
-    return JWT.sign({id} , process.env.JWT_SECRETE , {expiresIn:'30m'});
+    return JWT.sign({id} , process.env.JWT_SECRET , {expiresIn:'30m'});
 }
 
 exports.signup = catchAsync(async (req, res, next) =>
@@ -82,7 +82,7 @@ exports.protect = catchAsync(async (req , res , next) =>
     console.log(token);
 
     //2) Verification of token
-    const correct = await promisify(JWT.verify)(token , process.env.JWT_SECRETE);
+    const correct = await promisify(JWT.verify)(token , process.env.JWT_SECRET);
 
     //3) Check if user still exists
     let currentUser = await User.findById(correct.id);

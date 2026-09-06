@@ -11,7 +11,7 @@ let userModel = new mongoose.Schema
             type: String,
             required: true,
             maxlength: [40, 'name should be less than or equal 40'],
-            minlength: [10, 'name should be more than or equal 10'],
+            minlength: [3, 'name should be more than or equal 10'],
         },
         email:
         {

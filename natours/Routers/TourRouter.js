@@ -2,6 +2,8 @@ const fs = require('fs');
 const express = require('express');
 const TourRouter = require('./../Controllers/TourController');
 const authcontroll = require('./../Controllers/authcontroll');
+const reviewControll = require('./../Controllers/reviewController');
+const reviewRouter = require('./../Routers/ReviewRouter');
 // const { route } = require('..');
 
 
@@ -29,5 +31,7 @@ router
     .route('/')
     .get(authcontroll.protect ,TourRouter.getTours)
     .post(TourRouter.CreateTour);
+
+router.use('/:tour/review', reviewRouter)
 
 module.exports = router
