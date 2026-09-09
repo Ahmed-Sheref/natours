@@ -1,6 +1,54 @@
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const API_Features = require('../utils/apiFeatures');
+class API_Features 
+{
+    constructor(Query , queryStr)
+    {
+        this.Query = Query;
+        this.queryStr = queryStr;
+    }
+
+    filter()
+    {
+        let queryObj = {...this.queryStr};
+        
+        let Special_Operation = ['sort' , 'limit' , 'page' , 'fields']
+        
+        Special_Operation.forEach(op => {delete queryObj[op]});
+        console.log(queryObj);
+
+        // Handle query to match specific syntax for Mongooes
+        queryObj = JSON.stringify(queryObj);
+        let queryStr = queryObj.replace(/"(\w+)\[(gte|gt|lte|lt)\]":"?([^"]+)"?/g,'"$1":{"$$$2":"$3"}');
+        queryStr = JSON.parse(queryStr);
+        this.Query = this.Query.find(queryStr);
+        return this;
+    }
+
+    sort()
+    {
+        let QuerySort = this.queryStr.sort;
+        if (QuerySort)
+        {
+            console.log('before =', QuerySort);
+            QuerySort = QuerySort.split(',').join(' ');
+            console.log('after  =', QuerySort);
+            this.Query = this.Query.sort(QuerySort);
+        }
+        return this;
+    }
+
+    limit()
+    {
+        let Querylimit = this.queryStr.limit ? this.queryStr.limit * 1 : 10;
+        let Querypage  = this.queryStr.page  ? this.queryStr.page  * 1 : 1;
+
+        let Queryskip = (Querypage - 1) * Querylimit;
+
+        this.Query = this.Query.skip(Queryskip).limit(Querylimit);
+        return this;
+    }
+}
 
 exports.deleteOne = Model => catchAsync(async (req, res, next) => 
 {

@@ -14,10 +14,6 @@ const tourSchema = new mongoose.Schema(
             minlength: [10, 'A tour name must have more or equal then 10 characters']
             // validate: [validator.isAlpha, 'Tour name must only contain characters']
         },
-        slug:
-        {
-            type: String
-        },
         duration:
         {
             type: Number,
@@ -148,6 +144,10 @@ const tourSchema = new mongoose.Schema(
         }
     }
 );
+
+tourSchema.index({ price: 1, ratingsAverage: -1 });
+tourSchema.index({ slug: 1 });
+tourSchema.index({ startLocation: '2dsphere' });
 
 tourSchema.virtual('durationWeeks').get(function ()
 {

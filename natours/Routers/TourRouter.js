@@ -11,7 +11,7 @@ const reviewRouter = require('./../Routers/ReviewRouter');
 // const tours = JSON.parse(fs.readFileSync(''));
 const router = express.Router();
 
-
+router.use(authcontroll.protect);
 
 router
     .route('/get-tours-stats')
@@ -22,14 +22,21 @@ router
     .get(TourRouter.get_plan_monthly);
 
 router
+    .route('/tours-within/:distance/center/:latlng/unit/:unit')
+    .get(TourRouter.getToursWithin);
+
+
+    router.route('/distances/:latlng/unit/:unit').get(TourRouter.getDistances);
+
+router
     .route('/:id')
     .get(TourRouter.getSpecficTour)
     .patch(TourRouter.UpdateTour)
-    .delete(authcontroll.protect, authcontroll.restrictto('admin'), TourRouter.DeleteTour);
+    .delete(authcontroll.restrictto('admin'), TourRouter.DeleteTour);
 
 router
     .route('/')
-    .get(authcontroll.protect ,TourRouter.getTours)
+    .get(TourRouter.getTours)
     .post(TourRouter.CreateTour);
 
 router.use('/:tour/review', reviewRouter)
