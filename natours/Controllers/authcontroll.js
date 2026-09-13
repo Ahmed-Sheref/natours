@@ -3,7 +3,7 @@ const User = require('../Models/userModel');
 const JWT = require('jsonwebtoken');
 const { promisify } = require('util');
 const crypto = require('crypto');
-const sendEmail = require('../utils/email');
+const Email = require('../utils/email');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
@@ -18,27 +18,35 @@ const sign = (id) =>
 
 exports.signup = catchAsync(async (req, res, next) =>
 {
-    let newUser = await User.create
-    (
-        {
-            name: req.body.name,
-            email: req.body.email,
-            password: req.body.password,
-            confirmPassword: req.body.confirmPassword,
-            role: req.body.role
-        }
-    );
+    let newUser = await User.create(
+    {
+        name: req.body.name,
+        email: req.body.email,
+        password: req.body.password,
+        confirmPassword: req.body.confirmPassword,
+        role: req.body.role
+    });
+
+
+    // Welcome email URL
+    const url = 'http://localhost:5173/me';
+
+    // Send welcome email
+    await new Email(newUser,url).sendWelcome();
+
+
     const token = sign(newUser._id);
+
+
     res.status(201).json(
+    {
+        status: 'success',
+        token,
+        data:
         {
-            status: 'success',
-            token,
-            data:
-            {
-                user: newUser
-            }
+            user: newUser
         }
-    )
+    });
 });
 
 exports.login = catchAsync(async (req , res , next) => 
@@ -131,26 +139,13 @@ exports.forget = catchAsync(async (req, res, next) =>
     console.log(randomToken);
 
     // 3) sent the token to user's email
-    const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${randomToken}`;
+    const resetURL = `http://localhost:5173/reset-password/${randomToken}`;    
     const message = `Forgot your password? Submit a PATCH request with your new password and
     passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email!`;
 
     try 
     {
-        await sendEmail.sendEmail(
-        {
-            email: user.email, 
-            subject: 'Your password reset token (valid for 10 min)',
-            template: 'passwordReset', 
-            user: user,              
-            url: resetURL            
-        });
-
-        res.status(200).json(
-        {
-            status: 'success',
-            message: 'Token sent to email!'
-        });
+        await new Email(user, resetURL).sendPasswordReset();
     } 
     catch (err) 
     {
