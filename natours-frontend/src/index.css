@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  /* Color system — expedition palette: deep pine, brass, parchment.
+     Deliberately not the cream+terracotta or near-black+neon defaults. */
+  --color-pine-950: #0d211d;
+  --color-pine-900: #10302a;
+  --color-pine-800: #163f37;
+  --color-pine-700: #1f5449;
+  --color-pine-600: #2b6d5d;
+
+  --color-brass-600: #a97a2f;
+  --color-brass-500: #c08a3e;
+  --color-brass-400: #d5a55f;
+  --color-brass-300: #e6c58c;
+
+  --color-clay-700: #6a4028;
+  --color-clay-500: #8a5738;
+
+  --color-parchment-100: #f8f5ee;
+  --color-parchment-200: #f1ebdd;
+  --color-parchment-300: #e7ddc7;
+
+  --color-ink-900: #17211d;
+  --color-ink-700: #35423c;
+  --color-mist-500: #7c8880;
+  --color-mist-300: #c7cec8;
+
+  --color-danger-600: #a3402f;
+  --color-danger-100: #f6e3de;
+  --color-success-600: #3f6b4a;
+  --color-success-100: #e2ecdf;
+
+  /* Type */
+  --font-display: "Piazzolla", "Georgia", serif;
+  --font-sans: "Manrope", "system-ui", sans-serif;
+
+  /* Radius: one deliberate scale, not "rounded-full on everything" */
+  --radius-card: 0.625rem;
+  --radius-pill: 999px;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-parchment-100);
+    color: var(--color-ink-900);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background-color: var(--color-brass-300);
+    color: var(--color-ink-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brass-500);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
