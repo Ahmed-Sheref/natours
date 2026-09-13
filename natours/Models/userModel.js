@@ -28,6 +28,7 @@ let userModel = new mongoose.Schema
         photo:
         {
             type: String,
+            default: 'defult.jpeg'
         },
         role:
         {

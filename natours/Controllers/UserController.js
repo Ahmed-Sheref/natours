@@ -3,6 +3,37 @@ const JWT = require('jsonwebtoken');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const factory = require('./handlerFactory');
+// const multer = require('./multer')
+
+
+const multer = require('multer');
+const sharp = require('sharp');
+
+let multerStorage = multer.memoryStorage();
+
+const upload = multer({storage: multerStorage});
+
+exports.uploadUserPhoto = upload.single('photo');
+
+
+exports.resizeUserPhoto = catchAsync(async (req, res, next) =>
+{
+    if (!req.file)
+    {
+        return next();
+    }
+
+    req.file.filename = `user-${req.user.id}-${Date.now()}.jpeg`;
+
+    await sharp(req.file.buffer)
+        .resize(500, 500)
+        .toFormat('jpeg')
+        .jpeg({quality: 90})
+        .toFile(`public/img/users/${req.file.filename}`);
+
+    next();
+});
+
 
 const filterObject = (obj , ...allowFields) =>
 {
@@ -29,6 +60,7 @@ exports.updateMe = catchAsync(async (req , res , next) =>
 {
     let user = await User.findById(req.user.id);
     let newReq = filterObject(req.body , 'name' , 'email');
+    if (req.file) newReq.photo = req.file.filename;
     let newUser = await User.findByIdAndUpdate(req.user.id , newReq , {runValidators: true , new: true})
 
     return res.status(200).json({ status: 'success', message: "User updated successfully" , newUser});
