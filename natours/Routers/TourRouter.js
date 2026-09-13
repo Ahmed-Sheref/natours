@@ -11,8 +11,6 @@ const reviewRouter = require('./../Routers/ReviewRouter');
 // const tours = JSON.parse(fs.readFileSync(''));
 const router = express.Router();
 
-router.use(authcontroll.protect);
-
 router
     .route('/get-tours-stats')
     .get(TourRouter.get_Tours_stats);
@@ -31,13 +29,13 @@ router
 router
     .route('/:id')
     .get(TourRouter.getSpecficTour)
-    .patch(TourRouter.UpdateTour)
-    .delete(authcontroll.restrictto('admin'), TourRouter.DeleteTour);
+    .patch(authcontroll.protect, TourRouter.uploadTourImages ,TourRouter.resizeTourImages, TourRouter.UpdateTour)
+    .delete(authcontroll.protect, authcontroll.restrictto('admin'), TourRouter.DeleteTour);
 
 router
     .route('/')
     .get(TourRouter.getTours)
-    .post(TourRouter.CreateTour);
+    .post(authcontroll.protect, TourRouter.CreateTour);
 
 router.use('/:tour/review', reviewRouter)
 
