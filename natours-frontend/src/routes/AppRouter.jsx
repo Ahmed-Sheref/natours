@@ -11,6 +11,8 @@ import SignupPage from '../pages/SignupPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
 import ProfilePage from '../pages/ProfilePage';
+import PaymentSuccessPage from '../pages/PaymentSuccessPage';
+import PaymentCancelPage from '../pages/PaymentCancelPage';
 import NotFoundPage from '../pages/NotFoundPage';
 
 export default function AppRouter() {
@@ -24,6 +26,8 @@ export default function AppRouter() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+        <Route path="/payment/success" element={<PaymentSuccessPage />} />
+        <Route path="/payment/cancel" element={<PaymentCancelPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/me" element={<ProfilePage />} />

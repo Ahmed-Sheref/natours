@@ -1,27 +1,51 @@
-const app = require('./index');
 const dotenv = require('dotenv');
-const mongoose = require('mongoose');
+const path = require('path');
 
-dotenv.config({path: 'D:\\Programming\\Back_end\\Jonas\\natours\\config.env'})
+if (process.env.NODE_ENV !== 'production') 
+{
+    dotenv.config({path: path.join(__dirname, 'config.env')});
+}
+
+const mongoose = require('mongoose');
+const app = require('./index');
 
 const DB = process.env.DATABASE;
 
-mongoose.connect(DB)
-.then((con) => 
-{
-    console.log()
-    console.log(con.connection)
-    console.log('Connection Done');
-})
-
-const server = app.listen(3000 , () => {console.log('server is running...')});
-
-process.on('unhandledRejection', (err) => 
-{
-    console.log('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.log(err.name, err.message);
-    server.close(() => 
+mongoose
+    .connect(DB)
+    .then(() => 
     {
+        console.log('Database connected');
+    })
+    .catch((err) => 
+    {
+        console.error('Database connection failed:', err);
         process.exit(1);
     });
-})
+
+
+const PORT = process.env.PORT || 3000;
+
+
+const server = app.listen(
+    PORT, '0.0.0.0', () => 
+    {
+        console.log(`Server running on port ${PORT}`);
+    }
+);
+
+
+process.on(
+    'unhandledRejection',
+    (err) => 
+    {
+        console.error(
+            'UNHANDLED REJECTION:',
+            err
+        );
+        server.close(() => 
+        {
+            process.exit(1);
+        });
+    }
+);

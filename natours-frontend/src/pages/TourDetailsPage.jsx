@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Clock, Gauge, MapPin, Users, Tag, CalendarDays, Info } from 'lucide-react';
 import Container from '../components/common/Container';
 import Button from '../components/common/Button';
@@ -10,13 +10,32 @@ import TourMap from '../features/tours/components/TourMap';
 import ReviewList from '../features/reviews/components/ReviewList';
 import ReviewForm from '../features/reviews/components/ReviewForm';
 import { useTour } from '../features/tours/tours.hooks';
+import { useCheckoutSession } from '../features/bookings/booking.hooks';
 import { formatPrice, formatDate, difficultyLabel } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 
 export default function TourDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { data: tour, isLoading, isError, error, refetch } = useTour(id);
+  const checkout = useCheckoutSession();
+
+  function handleBookTour() {
+    if (!user) {
+      navigate('/login', { state: { from: location } });
+      return;
+    }
+
+    checkout.mutate(id, {
+      onSuccess: (session) => {
+        // Stripe Checkout is hosted by Stripe. The backend creates the session
+        // and returns its URL; the frontend only redirects the browser there.
+        window.location.assign(session.url);
+      },
+    });
+  }
 
   if (isLoading) {
     return (
@@ -124,13 +143,23 @@ export default function TourDetailsPage() {
         <aside className="h-fit rounded-[var(--radius-card)] border border-[var(--color-mist-300)] p-6 lg:sticky lg:top-24">
           <p className="font-display text-2xl font-semibold">{formatPrice(tour.price)}</p>
           <p className="mb-5 text-sm text-[var(--color-mist-500)]">per person</p>
-          <Button className="w-full" disabled title="Booking isn't available yet">
-            Book this tour
+
+          <Button className="w-full" loading={checkout.isPending} onClick={handleBookTour}>
+            {user ? 'Book this tour' : 'Log in to book'}
           </Button>
-          <p className="mt-3 flex items-start gap-1.5 text-xs text-[var(--color-mist-500)]">
-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            Booking &amp; payment aren't wired up yet — the backend doesn't expose a booking endpoint.
-          </p>
+
+          {checkout.isError ? (
+            <p role="alert" className="mt-3 text-xs text-[var(--color-danger-600)]">
+              {checkout.error?.message ?? 'Could not start checkout. Please try again.'}
+            </p>
+          ) : (
+            <p className="mt-3 flex items-start gap-1.5 text-xs text-[var(--color-mist-500)]">
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              {user
+                ? 'You will be redirected to Stripe to complete your payment securely.'
+                : 'You need to log in before starting checkout.'}
+            </p>
+          )}
         </aside>
       </Container>
     </div>

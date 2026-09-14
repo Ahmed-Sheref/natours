@@ -1,0 +1,166 @@
+--- a/natours-frontend/src/pages/TourDetailsPage.jsx
++++ b/natours-frontend/src/pages/TourDetailsPage.jsx
+@@ -1,4 +1,4 @@
+-import { Link, useParams } from 'react-router-dom';
++import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+ import { Clock, Gauge, MapPin, Users, Tag, CalendarDays, Info } from 'lucide-react';
+ import Container from '../components/common/Container';
+ import Button from '../components/common/Button';
+@@ -10,13 +10,32 @@
+ import ReviewList from '../features/reviews/components/ReviewList';
+ import ReviewForm from '../features/reviews/components/ReviewForm';
+ import { useTour } from '../features/tours/tours.hooks';
++import { useCheckoutSession } from '../features/bookings/booking.hooks';
+ import { formatPrice, formatDate, difficultyLabel } from '../utils/formatters';
+ import { useAuth } from '../context/AuthContext';
+ 
+ export default function TourDetailsPage() {
+   const { id } = useParams();
+   const { user } = useAuth();
++  const navigate = useNavigate();
++  const location = useLocation();
+   const { data: tour, isLoading, isError, error, refetch } = useTour(id);
++  const checkout = useCheckoutSession();
++
++  function handleBookTour() {
++    if (!user) {
++      navigate('/login', { state: { from: location } });
++      return;
++    }
++
++    checkout.mutate(id, {
++      onSuccess: (session) => {
++        // Stripe Checkout is hosted by Stripe. The backend creates the session
++        // and returns its URL; the frontend only redirects the browser there.
++        window.location.assign(session.url);
++      },
++    });
++  }
+ 
+   if (isLoading) {
+     return (
+@@ -124,13 +143,23 @@
+         <aside className="h-fit rounded-[var(--radius-card)] border border-[var(--color-mist-300)] p-6 lg:sticky lg:top-24">
+           <p className="font-display text-2xl font-semibold">{formatPrice(tour.price)}</p>
+           <p className="mb-5 text-sm text-[var(--color-mist-500)]">per person</p>
+-          <Button className="w-full" disabled title="Booking isn't available yet">
+-            Book this tour
++
++          <Button className="w-full" loading={checkout.isPending} onClick={handleBookTour}>
++            {user ? 'Book this tour' : 'Log in to book'}
+           </Button>
+-          <p className="mt-3 flex items-start gap-1.5 text-xs text-[var(--color-mist-500)]">
+-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+-            Booking &amp; payment aren't wired up yet — the backend doesn't expose a booking endpoint.
+-          </p>
++
++          {checkout.isError ? (
++            <p role="alert" className="mt-3 text-xs text-[var(--color-danger-600)]">
++              {checkout.error?.message ?? 'Could not start checkout. Please try again.'}
++            </p>
++          ) : (
++            <p className="mt-3 flex items-start gap-1.5 text-xs text-[var(--color-mist-500)]">
++              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
++              {user
++                ? 'You will be redirected to Stripe to complete your payment securely.'
++                : 'You need to log in before starting checkout.'}
++            </p>
++          )}
+         </aside>
+       </Container>
+     </div>
+--- a/natours-frontend/src/routes/AppRouter.jsx
++++ b/natours-frontend/src/routes/AppRouter.jsx
+@@ -11,6 +11,8 @@
+ import ForgotPasswordPage from '../pages/ForgotPasswordPage';
+ import ResetPasswordPage from '../pages/ResetPasswordPage';
+ import ProfilePage from '../pages/ProfilePage';
++import PaymentSuccessPage from '../pages/PaymentSuccessPage';
++import PaymentCancelPage from '../pages/PaymentCancelPage';
+ import NotFoundPage from '../pages/NotFoundPage';
+ 
+ export default function AppRouter() {
+@@ -24,6 +26,8 @@
+         <Route path="/signup" element={<SignupPage />} />
+         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
++        <Route path="/payment/success" element={<PaymentSuccessPage />} />
++        <Route path="/payment/cancel" element={<PaymentCancelPage />} />
+ 
+         <Route element={<ProtectedRoute />}>
+           <Route path="/me" element={<ProfilePage />} />
+--- /dev/null
++++ b/natours-frontend/src/features/bookings/booking.api.js
+@@ -0,0 +1,12 @@
++import { apiClient } from '../../api/client';
++
++export async function createCheckoutSession(tourId) {
++  const response = await apiClient.get(`/booking/checkout-session/${tourId}`);
++  const session = response.data?.session;
++
++  if (!session?.url) {
++    throw new Error('The server did not return a Stripe checkout URL.');
++  }
++
++  return session;
++}
+--- /dev/null
++++ b/natours-frontend/src/features/bookings/booking.hooks.js
+@@ -0,0 +1,8 @@
++import { useMutation } from '@tanstack/react-query';
++import { createCheckoutSession } from './booking.api';
++
++export function useCheckoutSession() {
++  return useMutation({
++    mutationFn: createCheckoutSession,
++  });
++}
+--- /dev/null
++++ b/natours-frontend/src/pages/PaymentSuccessPage.jsx
+@@ -0,0 +1,22 @@
++import { CheckCircle2 } from 'lucide-react';
++import { Link } from 'react-router-dom';
++import Container from '../components/common/Container';
++import Button from '../components/common/Button';
++
++export default function PaymentSuccessPage() {
++  return (
++    <Container className="py-20">
++      <div className="mx-auto max-w-xl rounded-[var(--radius-card)] border border-[var(--color-success-600)]/20 bg-[var(--color-success-100)] p-8 text-center">
++        <CheckCircle2 className="mx-auto mb-4 size-10 text-[var(--color-success-600)]" aria-hidden="true" />
++        <h1 className="font-display text-3xl font-semibold">Payment completed</h1>
++        <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-700)]">
++          Stripe has returned you to Natours after checkout. Your backend should still verify the payment event before treating the booking as confirmed.
++        </p>
++        <div className="mt-6 flex justify-center gap-3">
++          <Button as={Link} to="/tours">Browse tours</Button>
++          <Button as={Link} to="/me" variant="outline">My profile</Button>
++        </div>
++      </div>
++    </Container>
++  );
++}
+--- /dev/null
++++ b/natours-frontend/src/pages/PaymentCancelPage.jsx
+@@ -0,0 +1,21 @@
++import { XCircle } from 'lucide-react';
++import { Link } from 'react-router-dom';
++import Container from '../components/common/Container';
++import Button from '../components/common/Button';
++
++export default function PaymentCancelPage() {
++  return (
++    <Container className="py-20">
++      <div className="mx-auto max-w-xl rounded-[var(--radius-card)] border border-[var(--color-mist-300)] p-8 text-center">
++        <XCircle className="mx-auto mb-4 size-10 text-[var(--color-mist-500)]" aria-hidden="true" />
++        <h1 className="font-display text-3xl font-semibold">Checkout cancelled</h1>
++        <p className="mt-3 text-sm text-[var(--color-ink-700)]">
++          No problem. You can return to the tours list and try again whenever you are ready.
++        </p>
++        <div className="mt-6">
++          <Button as={Link} to="/tours">Back to tours</Button>
++        </div>
++      </div>
++    </Container>
++  );
++}

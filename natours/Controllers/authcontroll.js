@@ -24,12 +24,12 @@ exports.signup = catchAsync(async (req, res, next) =>
         email: req.body.email,
         password: req.body.password,
         confirmPassword: req.body.confirmPassword,
-        role: req.body.role
+        // role: req.body.role
     });
 
 
     // Welcome email URL
-    const url = 'http://localhost:5173/me';
+    const url = `${process.env.FRONTEND_URL}/me`;
 
     // Send welcome email
     await new Email(newUser,url).sendWelcome();
@@ -87,7 +87,7 @@ exports.protect = catchAsync(async (req , res , next) =>
     {
         return next(new AppError('You are not logged in! Please log in to get access.', 401));
     }
-    console.log(token);
+    // console.log(token);
 
     //2) Verification of token
     const correct = await promisify(JWT.verify)(token , process.env.JWT_SECRET);
@@ -136,10 +136,10 @@ exports.forget = catchAsync(async (req, res, next) =>
     let randomToken = user.createRandomToken();
     await user.save({validateBeforeSave: false});
 
-    console.log(randomToken);
+    // console.log(randomToken);
 
     // 3) sent the token to user's email
-    const resetURL = `http://localhost:5173/reset-password/${randomToken}`;    
+    const resetURL = `${process.env.FRONTEND_URL}/reset-password/${randomToken}`;
     const message = `Forgot your password? Submit a PATCH request with your new password and
     passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email!`;
 

@@ -2,7 +2,9 @@
   "name": "jonas",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
+  "scripts": 
+  {
+    "start": "node natours/Server.js",
     "dev": "nodemon natours/Server.js"
   },
   "author": "Ahmed Sheref",
@@ -11,14 +13,18 @@
   "dependencies": {
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "html-to-text": "^9.0.5",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.19.3",
     "morgan": "^1.10.1",
+    "multer": "^2.3.0",
     "nodemailer": "^7.0.13",
     "pug": "^3.0.3",
+    "sharp": "^0.35.4",
+    "stripe": "^22.6.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "validator": "^13.15.26"

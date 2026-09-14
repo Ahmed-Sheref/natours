@@ -1,37 +1,46 @@
 const express = require('express');
 const cors = require('cors');
+
 const TourRouter = require('./Routers/TourRouter');
 const UserRouter = require('./Routers/UserRouter');
 const ReviewRouter = require('./Routers/ReviewRouter');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./swagger');
-const appError = require('./utils/appError')
+const bookingRouter = require('./Routers/bookingRouter');
+
+const bookingController = require('./Controllers/bookingControl');
+
+const appError = require('./utils/appError');
 const errorHandler = require('./Controllers/errorController');
+
 const path = require('path');
 
-
 const app = express();
-// app.use((req , res , next) => {console.log(req.query.sort = 5); next()});
-app.use(cors());
 
-app.use(express.json());
+
+// CORS
+app.use(cors({origin: process.env.FRONTEND_URL}));
+
+
+// STRIPE WEBHOOK
+// MUST be before express.json()
+app.post('/api/v1/booking/webhook',express.raw({type: 'application/json'}),bookingController.webhookCheckout);
+
+
+// Normal JSON body parser
+app.use(express.json({limit: '10kb'}));
+
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Swagger
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.use('/api/v1/tours' , TourRouter);
-app.use('/api/v1/users' , UserRouter);
-app.use('/api/v1/reviews' , ReviewRouter);
+// Routers
+app.use('/api/v1/tours', TourRouter);
+app.use('/api/v1/users', UserRouter);
+app.use('/api/v1/reviews', ReviewRouter);
+app.use('/api/v1/booking', bookingRouter);
 
-app.use((req,res,next) => 
-{
-    // let err = new Error('Path not found')
-    // err.statusCode = 404;
-    // err.status = 'fail';
 
-    next(new appError('path Not Found', 404));
-})
+app.use((req, res, next) => {next(new appError('Path Not Found', 404));});
+
 
 app.use(errorHandler);
 

@@ -12,12 +12,13 @@ router.post('/login', authcontroll.login)
 router.post('/forgetPassword', authcontroll.forget)
 router.patch('/resetPassword/:token', authcontroll.resetPassword)
 
+router.use(authcontroll.protect);
 
-router.patch('/updateMyPassword' , authcontroll.protect, UserRouter.updatePassword)
-router.patch('/updateMe' ,authcontroll.protect, UserRouter.uploadUserPhoto,UserRouter.resizeUserPhoto, UserRouter.updateMe)
-router.delete('/deleteMe' , authcontroll.protect, UserRouter.deleteMe)
+router.patch('/updateMyPassword' , UserRouter.updatePassword)
+router.patch('/updateMe', UserRouter.uploadUserPhoto,UserRouter.resizeUserPhoto, UserRouter.updateMe)
+router.delete('/deleteMe' , UserRouter.deleteMe)
 
-router.get('/me', authcontroll.protect, UserRouter.getMe, UserRouter.getUser)
+router.get('/me', UserRouter.getMe, UserRouter.getUser)
 
 router
     .route('/')

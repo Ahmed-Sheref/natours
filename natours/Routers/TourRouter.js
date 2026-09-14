@@ -35,7 +35,7 @@ router
 router
     .route('/')
     .get(TourRouter.getTours)
-    .post(authcontroll.protect, TourRouter.CreateTour);
+    .post(authcontroll.protect, authcontroll.restrictto('admin'), TourRouter.CreateTour);
 
 router.use('/:tour/review', reviewRouter)
 
