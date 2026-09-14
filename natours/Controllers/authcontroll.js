@@ -18,25 +18,25 @@ const sign = (id) =>
 
 exports.signup = catchAsync(async (req, res, next) =>
 {
-    let newUser = await User.create(
+    const newUser = await User.create(
     {
         name: req.body.name,
         email: req.body.email,
         password: req.body.password,
-        confirmPassword: req.body.confirmPassword,
-        // role: req.body.role
+        confirmPassword: req.body.confirmPassword
     });
-
-
-    // Welcome email URL
-    const url = `${process.env.FRONTEND_URL}/me`;
-
-    // Send welcome email
-    await new Email(newUser,url).sendWelcome();
-
 
     const token = sign(newUser._id);
 
+    // Send welcome email without blocking signup response
+    const url = `${process.env.FRONTEND_URL}/me`;
+
+    new Email(newUser, url)
+        .sendWelcome()
+        .catch(err =>
+        {
+            console.error('Welcome email failed:', err.message);
+        });
 
     res.status(201).json(
     {
